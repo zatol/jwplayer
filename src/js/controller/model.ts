@@ -40,6 +40,7 @@ export type PlayerModelAttributes = {
     id: string;
     instreamMode: boolean;
     isFloating?: boolean;
+    isTizenApp?: boolean;
     item: number;
     itemMeta: GenericObject;
     itemReady: boolean;
@@ -269,6 +270,12 @@ class Model extends SimpleModel {
     // Mobile players always wait to become viewable.
     // Desktop players must have autostart set to viewable
     setAutoStart(autoStart?: AutoStart): void {
+        // Always autostart for tizen app
+        if (this.attributes.isTizenApp) {
+            this.set('autostart', true);
+            return;
+        }
+
         if (autoStart !== undefined) {
             this.set('autostart', autoStart);
         }
