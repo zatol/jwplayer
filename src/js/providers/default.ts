@@ -1,12 +1,13 @@
-import { PLAYER_STATE, MEDIA_TYPE } from 'events/events';
-import type { GenericObject } from 'types/generic.type';
+import { PLAYER_STATE, MEDIA_TYPE, InternalPlayerState } from 'events/events';
+import type * as Event from 'events/events';
 import type { TracksMixin, SimpleAudioTrack } from 'providers/tracks-mixin';
 import type { VideoActionsInt } from 'providers/video-actions-mixin';
 import type { VideoAttachedInt } from 'providers/video-attached-mixin';
-import type Events from 'utils/backbone.events';
 import type PlaylistItem from 'playlist/item';
-import type { QualityLevel } from './data-normalizer';
+import type { QualityLevel } from 'providers/data-normalizer';
 import type { PlaylistItemSource } from 'playlist/source';
+import type { PlayerError } from 'api/errors';
+import type { GenericObject, TextTrackLike } from 'types/generic.type';
 
 const noop: () => void = function(): void { /* noop */ };
 const returnFalse: () => boolean = (() => false);
@@ -17,6 +18,85 @@ export type SeekRange = {
     start: number;
     end: number;
 };
+
+export type ProviderEvents = {
+    [Event.PLAYER_STATE]: {
+        newstate: InternalPlayerState;
+    };
+    [Event.MEDIA_TYPE]: {
+        mediaType: 'audio' | 'video';
+    };
+    [Event.BANDWIDTH_ESTIMATE]: {
+        bandwidthEstimate: number;
+    };
+    [Event.MEDIA_SEEK]: {
+        position: number; offset: number;
+    };
+    [Event.MEDIA_META_CUE_PARSED]: {
+        metadataType: 'media' | 'id3' | 'emsg' | 'date-range' | 'program-date-time' | 'scte-35' | 'discontinuity';
+        metadataTime?: number;
+        metadata?: GenericObject;
+        programDateTime?: string;
+        duration?: number;
+        height?: number;
+        width?: number;
+        seekRange?: SeekRange;
+    };
+    [Event.MEDIA_META]: {
+        metadataType: 'media' | 'id3' | 'emsg' | 'date-range' | 'program-date-time' | 'scte-35' | 'discontinuity';
+        metadataTime?: number;
+        metadata?: GenericObject;
+        programDateTime?: string;
+        duration?: number;
+        height?: number;
+        width?: number;
+        seekRange?: SeekRange;
+    };
+    [Event.MEDIA_VISUAL_QUALITY]: {
+        reason: 'auto';
+        mode: 'auto' | 'manual';
+        bitrate: number;
+        level: {
+            width: number;
+            height: number;
+            index: number;
+            label: string;
+        };
+    };
+    [Event.MEDIA_LEVELS]: {
+        levels: {
+            label: string;
+        }[];
+        currentQuality: number;
+    };
+    [Event.MEDIA_LEVEL_CHANGED]: {
+        levels: {
+            label: string;
+        }[];
+        currentQuality: number;
+    };
+    [Event.AUDIO_TRACKS]: {
+        currentTrack: number;
+        tracks: SimpleAudioTrack[];
+    };
+    [Event.AUDIO_TRACK_CHANGED]: {
+        currentTrack: number;
+        tracks: SimpleAudioTrack[];
+    };
+    [Event.SUBTITLES_TRACKS]: {
+        tracks: TextTrackLike[];
+    };
+    [Event.SUBTITLES_TRACK_CHANGED]: {
+        currentTrack: number;
+        tracks: TextTrackLike[];
+    };
+    [Event.NATIVE_FULLSCREEN]: {
+        target: EventTarget | null;
+        jwstate: boolean;
+    };
+    [Event.WARNING]: PlayerError;
+    [Event.MEDIA_ERROR]: PlayerError;
+}
 
 interface InternalProvider {
     state?: string;
@@ -66,7 +146,7 @@ interface InternalProvider {
     getPlaybackRate: () => number;
     getLiveLatency: () => number | null;
     setControls: () => void;
-    setState: (state: string) => void;
+    setState: (state: InternalPlayerState) => void;
 
     sendMediaType: (sources: Array<PlaylistItemSource>) => void;
 
@@ -86,14 +166,15 @@ export interface ImplementedProvider extends InternalProvider {
     attachMedia: () => void;
     detachMedia: () => void;
 
-    on(name: string, callback: Function, context?: any): ImplementedProvider;
-    off(name: string | null, callback?: Function | null, context?: any): ImplementedProvider;
-    trigger(evt: string, obj: GenericObject): void;
+    on<E extends keyof ProviderEvents>(name: E, callback: Function, context?: any): ImplementedProvider;
+    once<E extends keyof ProviderEvents>(name: E, callback: Function, context?: any): ImplementedProvider;
+    off<E extends keyof ProviderEvents>(name?: E | null, callback?: Function | null, context?: any): ImplementedProvider;
+    trigger<E extends keyof ProviderEvents>(evt: E, obj: ProviderEvents[E]): ImplementedProvider;
 
     prototype: Omit<ImplementedProvider, 'prototype'>;
 }
 
-export type ProviderWithMixins = InternalProvider & TracksMixin & VideoActionsInt & VideoAttachedInt & Events;
+export type ProviderWithMixins = TracksMixin & VideoActionsInt & VideoAttachedInt & ImplementedProvider;
 
 interface DefaultProvider {
     state?: string;
@@ -145,13 +226,13 @@ interface DefaultProvider {
     detachMedia: () => void;
     init: () => void;
 
-    setState: (state: string) => void;
+    setState: (state: InternalPlayerState) => void;
 
     sendMediaType: (sources: Array<PlaylistItemSource>) => void;
 
     getDuration: () => number;
 
-    trigger: (evt: string, obj: GenericObject) => void;
+    trigger<E extends keyof ProviderEvents>(evt: E, obj: ProviderEvents[E]): void;
 }
 
 /** Audio Track information for tracks returned by {@link Api#getAudioTracks jwplayer().getAudioTracks()}
@@ -236,7 +317,7 @@ const DefaultProvider: DefaultProvider = {
     detachMedia: noop,
     init: noop,
 
-    setState: function(newstate: string): void {
+    setState: function(newstate: InternalPlayerState): void {
         this.state = newstate;
 
         this.trigger(PLAYER_STATE, {
